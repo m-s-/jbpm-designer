@@ -115,8 +115,9 @@ public class JbpmPreprocessingUnit implements IDiagramPreprocessingUnit {
         Map<String, ThemeInfo> themeData = setupThemes(profile, req);
         setupCustomEditors(profile, req);
         // check with guvnor to see what packages exist
-        List<String> packageNames = findPackages(uuid, profile);
         String[] info = ServletUtil.findPackageAndAssetInfo(uuid, profile);
+        
+        String packageName = info[0];
         
         // set up form widgets
         setupFormWidgets(profile, req);
@@ -124,7 +125,7 @@ public class JbpmPreprocessingUnit implements IDiagramPreprocessingUnit {
         setupDefaultIcons(info, profile);
         
         // figure out which package our uuid belongs in and get back the list of configs
-        Map<String, List<String>> workitemConfigInfo = findWorkitemInfoForUUID(uuid, packageNames, profile);
+        Map<String, List<String>> workitemConfigInfo = findWorkitemInfoForPackage(packageName, profile);
         if(workitemConfigInfo != null) {
         	boolean gotConfigs = false;
         	Iterator<String> pkgIter = workitemConfigInfo.keySet().iterator();
@@ -136,10 +137,10 @@ public class JbpmPreprocessingUnit implements IDiagramPreprocessingUnit {
         	}
         	if(!gotConfigs) {
         		System.out.println("Setting up default workitem configuration");
-        		setupDefaultWorkitemConfigs(uuid, packageNames, profile);
+        		setupDefaultWorkitemConfigs(packageName, profile);
         		System.out.println("End setting up default workitem configuration");
         		// re-load the workitem config info
-        		workitemConfigInfo = findWorkitemInfoForUUID(uuid, packageNames, profile);
+        		workitemConfigInfo = findWorkitemInfoForPackage(packageName, profile);
         	}
         }
         try {
@@ -698,6 +699,46 @@ public class JbpmPreprocessingUnit implements IDiagramPreprocessingUnit {
     	}
     }
     
+    
+    private void setupDefaultWorkitemConfigs(String pkg, IDiagramProfile profile) {
+		// push the default workitem config
+		String packageAssetsURL = ExternalInfo.getExternalProtocol(profile)
+                + "://"
+                + ExternalInfo.getExternalHost(profile)
+                + "/"
+                + profile.getExternalLoadURLSubdomain().substring(0,
+                        profile.getExternalLoadURLSubdomain().indexOf("/"))
+                + "/rest/packages/" + pkg + "/assets/";
+		try {
+			// push default configuration wid
+            StringTemplate widConfigTemplate = new StringTemplate(readFile(default_widconfigtemplate));
+            widConfigTemplate.setAttribute("protocol", ExternalInfo.getExternalProtocol(profile));
+            widConfigTemplate.setAttribute("host", ExternalInfo.getExternalHost(profile));
+            widConfigTemplate.setAttribute("subdomain", profile.getExternalLoadURLSubdomain().substring(0,
+                    profile.getExternalLoadURLSubdomain().indexOf("/")));
+            widConfigTemplate.setAttribute("pkgName", pkg);
+            
+            URL createWidURL = new URL(packageAssetsURL);
+            HttpURLConnection createWidConnection = (HttpURLConnection) createWidURL
+                    .openConnection();
+            applyAuth(profile, createWidConnection);
+            createWidConnection.setRequestMethod("POST");
+            createWidConnection.setRequestProperty("Content-Type",
+                    "application/octet-stream");
+            createWidConnection.setRequestProperty("Accept",
+                    "application/atom+xml");
+            createWidConnection.setRequestProperty("Slug", "WorkDefinitions.wid");
+            createWidConnection.setRequestProperty("charset", "UTF-8");
+            createWidConnection.setDoOutput(true);
+            createWidConnection.getOutputStream().write(widConfigTemplate.toString().getBytes("UTF-8"));
+            createWidConnection.connect();
+            System.out.println("created default wid: " + createWidConnection.getResponseCode());
+		} catch (Exception e) {
+            e.printStackTrace();
+		}
+    }
+    
+    
     private Map<String, List<String>> findWorkitemInfoForUUID(String uuid, List<String> packageNames, IDiagramProfile profile) {
         boolean gotPackage = false;
         String pkg = "";
@@ -756,6 +797,55 @@ public class JbpmPreprocessingUnit implements IDiagramPreprocessingUnit {
         }
         Map<String, List<String>> returnData = new HashMap<String, List<String>>();
         returnData.put(pkg, packageConfigs.get(pkg));
+        return returnData;
+    }
+    
+    private Map<String, List<String>> findWorkitemInfoForPackage(String pkg, IDiagramProfile profile) {
+        boolean gotPackage = false;
+
+        List<String> packageConfigs = new ArrayList<String>();
+
+    	try {
+        	String packageAssetURL = ExternalInfo.getExternalProtocol(profile) + "://" + ExternalInfo.getExternalHost(profile) +
+            "/" + profile.getExternalLoadURLSubdomain().substring(0, profile.getExternalLoadURLSubdomain().indexOf("/")) +
+            "/rest/packages/" + URLEncoder.encode(pkg, "UTF-8") + "/assets/";
+            
+        
+            XMLInputFactory factory = XMLInputFactory.newInstance();
+            XMLStreamReader reader = factory.createXMLStreamReader(ServletUtil.getInputStreamForURL(packageAssetURL, "GET", profile), "UTF-8");
+
+            String format = "";
+            String title = "";  
+            while (reader.hasNext()) {
+                int next = reader.next();
+                if (next == XMLStreamReader.START_ELEMENT) {
+                    if ("format".equals(reader.getLocalName())) {
+                        format = reader.getElementText();
+                    } 
+                    if ("title".equals(reader.getLocalName())) {
+                        title = reader.getElementText();
+                    }
+                }
+                if (next == XMLStreamReader.END_ELEMENT) {
+                  if ("asset".equals(reader.getLocalName())) {
+                	  if(format.equals(WORKITEM_DEFINITION_EXT)) {
+                		  packageConfigs.add(title);
+                		  title = "";
+                		  format = "";
+                	  }
+                  }
+                }
+            }
+            if(format.equals("wid")) {
+                packageConfigs.add(title);
+            }
+        } catch (Exception e) {
+            // we dont want to barf..just log that error happened
+            _logger.error(e.getMessage());
+        } 
+            
+        Map<String, List<String>> returnData = new HashMap<String, List<String>>();
+        returnData.put(pkg, packageConfigs);
         return returnData;
     }
     
