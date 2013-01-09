@@ -96,78 +96,63 @@ public class ServletUtil {
 	
 	public static String[] findPackageAndAssetInfo(String uuid,
             IDiagramProfile profile) {
-        List<String> packages = new ArrayList<String>();
-        String packagesURL = ExternalInfo.getExternalProtocol(profile)
-                + "://"
-                + ExternalInfo.getExternalHost(profile)
-                + "/"
-                + profile.getExternalLoadURLSubdomain().substring(0,
-                        profile.getExternalLoadURLSubdomain().indexOf("/"))
-                + "/rest/packages/";
-        try {
-            XMLInputFactory factory = XMLInputFactory.newInstance();
-            XMLStreamReader reader = factory
-                    .createXMLStreamReader(ServletUtil.getInputStreamForURL(packagesURL,
-                            "GET", profile), "UTF-8");
-            while (reader.hasNext()) {
-                if (reader.next() == XMLStreamReader.START_ELEMENT) {
-                    if ("title".equals(reader.getLocalName())) {
-                        packages.add(reader.getElementText());
-                    }
-                }
-            }
-        } catch (Exception e) {
-            // we dont want to barf..just log that error happened
-            _logger.error(e.getMessage());
-        }
-        
-        boolean gotPackage = false;
-        String[] pkgassetinfo = new String[2];
-        for (String nextPackage : packages) {
-        	try {
-	        	String packageAssetURL = ExternalInfo.getExternalProtocol(profile)
-	                    + "://"
-	                    + ExternalInfo.getExternalHost(profile)
-	                    + "/"
-	                    + profile.getExternalLoadURLSubdomain().substring(0,
-	                            profile.getExternalLoadURLSubdomain().indexOf("/"))
-	                    + "/rest/packages/" + URLEncoder.encode(nextPackage, "UTF-8") + "/assets/";
-                XMLInputFactory factory = XMLInputFactory.newInstance();
-                XMLStreamReader reader = factory
-                        .createXMLStreamReader(ServletUtil.getInputStreamForURL(
-                                packageAssetURL, "GET", profile), "UTF-8");
-                String title = "";
-                String readuuid = "";
-                while (reader.hasNext()) {
-                    int next = reader.next();
-                    if (next == XMLStreamReader.START_ELEMENT) {
-                        if ("title".equals(reader.getLocalName())) {
-                            title = reader.getElementText();
-                        }
-                        if ("uuid".equals(reader.getLocalName())) {
-                        	readuuid = reader.getElementText();
-                        }
-                    }
-                    if (next == XMLStreamReader.END_ELEMENT) {
-                    	if ("asset".equals(reader.getLocalName())) {
-                    		if(title.length() > 0 && readuuid.length() > 0 && uuid.equals(readuuid)) {
-                    			pkgassetinfo[0] = nextPackage;
-                                pkgassetinfo[1] = title;
-                                gotPackage = true;
-                    		}
-                    	}
-                    }
-                }
-            } catch (Exception e) {
-                // we dont want to barf..just log that error happened
-                _logger.error(e.getMessage());
-            }
-            if (gotPackage) {
-                // noo need to loop through rest of packages
-                break;
-            }
-        }
-        return pkgassetinfo;
+		
+		StringBuilder sb = new StringBuilder();
+		sb.append(ExternalInfo.getExternalProtocol(profile));
+		sb.append("://");
+		sb.append(ExternalInfo.getExternalHost(profile));
+		sb.append("/");
+		sb.append(profile.getExternalLoadURLSubdomain().substring(0,
+                        profile.getExternalLoadURLSubdomain().indexOf("/")));
+		sb.append("/rest/packages/assets/uuid/");
+		sb.append(uuid);
+		 
+		String uuidURL = sb.toString();
+		
+		String[] pkgassetinfo = new String[2];
+		
+		try {
+			XMLInputFactory factory = XMLInputFactory.newInstance();
+	        XMLStreamReader reader = factory
+	                .createXMLStreamReader(ServletUtil.getInputStreamForURL(
+	                		uuidURL, "GET", profile), "UTF-8");
+	        String packageName = "";
+	        String assetName = "";
+	        String readuuid = "";
+	        Boolean isInAsset = null; //null if not in module/package, true if in asset, false if in package
+	        while (reader.hasNext()) {
+	            int next = reader.next();
+	            if (next == XMLStreamReader.START_ELEMENT) {
+	            	
+	            	if ("asset".equals(reader.getLocalName())) {
+	            		isInAsset = true;
+	            	} else if ("package".equals(reader.getLocalName())) {
+	            		isInAsset = false;
+	            	} 
+	            	
+	                if ("title".equals(reader.getLocalName())) {
+	                	if (isInAsset == true) {
+	                		assetName = reader.getElementText();
+	                	} else if (isInAsset == false) {
+	                		packageName = reader.getElementText();
+	                	}
+	                }
+	                if ("uuid".equals(reader.getLocalName()) && isInAsset) {
+	                	readuuid = reader.getElementText();
+	                	if (!readuuid.equals(uuid)) {
+	                		_logger.error("something wrong on Guvnor API: asked for asset " + uuid + " but got asset " + readuuid);
+	                	}
+	                }
+	            }
+	        }
+	        pkgassetinfo[0] = packageName;
+	        pkgassetinfo[1] = assetName;
+	        
+		} catch (Exception e) {
+          // we dont want to barf..just log that error happened
+          _logger.error(e.getMessage());
+      }
+      return pkgassetinfo;
     }
 	
 	public static InputStream getInputStreamForURL(String urlLocation,
