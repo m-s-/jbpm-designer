@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
+import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -17,6 +18,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -84,6 +86,9 @@ public class JbpmPreprocessingUnit implements IDiagramPreprocessingUnit {
     private String themeInfo;
     private String formWidgetsDir;
     private String customEditorsInfo;
+    
+    private static String origStencilContent = null;
+    private static StringTemplate origStencilST = null;
     
     public JbpmPreprocessingUnit(ServletContext servletContext) {
         stencilPath = servletContext.getRealPath("/" + STENCILSET_PATH);
@@ -158,9 +163,19 @@ public class JbpmPreprocessingUnit implements IDiagramPreprocessingUnit {
         	for(Map.Entry<String, WorkDefinitionImpl> definition : workDefinitions.entrySet()) {
         		outData += definition.getValue().getName() + ",";
         	}
+        	
+        	//load the stencil if needed
+        	if (origStencilContent == null) {
+        		origStencilContent = readFile(origStencilFilePath);
+        		origStencilST = new StringTemplate(origStencilContent);
+        	}
         	// parse the profile json to include config data
         	// parse the orig stencil data with workitem definitions
-        	StringTemplate workItemTemplate = new StringTemplate(readFile(origStencilFilePath));
+        	
+        	
+        	StringTemplate workItemTemplate =origStencilST;
+        	workItemTemplate.reset();
+        	
         	workItemTemplate.setAttribute("workitemDefs", workDefinitions);
         	if(workitemConfigInfo != null && workitemConfigInfo.keySet() != null && workitemConfigInfo.keySet().size() > 0) {
         		for(String key: workitemConfigInfo.keySet()) {
@@ -193,24 +208,29 @@ public class JbpmPreprocessingUnit implements IDiagramPreprocessingUnit {
     
     @SuppressWarnings("unchecked")
     private void createAndParseViewSVG(Map<String, WorkDefinitionImpl> workDefinitions, IDiagramProfile profile) {
-        // first delete all existing workitem svgs
-        Collection<File> workitemsvgs = FileUtils.listFiles(new File(workitemSVGFilePath), new String[] { "svg" }, true);
-        if(workitemsvgs != null) {
-            for(File wisvg : workitemsvgs) {
-                deletefile(wisvg);
-            }
-        }
+    	//list everything
+        File f = new File(workitemSVGFilePath);
+        List<String> workitemsvgs = Arrays.asList(f.list(new FilenameFilter() {
+            public boolean accept(File dir, String name) {
+                return name.toLowerCase().endsWith(".svg");
+            }}));
         try {
+        	String origSVGFileContent = readFile(origWorkitemSVGFile);
+        	
             for(Map.Entry<String, WorkDefinitionImpl> definition : workDefinitions.entrySet()) {
-                StringTemplate workItemTemplate = new StringTemplate(readFile(origWorkitemSVGFile));
-                workItemTemplate.setAttribute("workitemDef", definition.getValue());
-                String widIcon = definition.getValue().getIcon();
-                InputStream iconStream = getImageInstream(widIcon, "GET", profile);
-                BASE64Encoder enc = new sun.misc.BASE64Encoder();
-                String iconEncoded = "data:image/png;base64," + enc.encode(IOUtils.toByteArray(iconStream));
-                workItemTemplate.setAttribute("nodeicon", iconEncoded);
-                String fileToWrite = workitemSVGFilePath + definition.getValue().getName() + ".svg";
-                createAndWriteToFile(fileToWrite, workItemTemplate.toString());
+            	String fileToWrite = workitemSVGFilePath + definition.getValue().getName() + ".svg";
+            	//generate only if not already existing. This is adequate for our scenario.
+            	if (workitemsvgs != null && !workitemsvgs.contains(definition.getValue().getName() + ".svg")) {
+	                StringTemplate workItemTemplate = new StringTemplate(origSVGFileContent);
+	                workItemTemplate.setAttribute("workitemDef", definition.getValue());
+	                String widIcon = definition.getValue().getIcon();
+	                InputStream iconStream = getImageInstream(widIcon, "GET", profile);
+	                BASE64Encoder enc = new sun.misc.BASE64Encoder();
+	                String iconEncoded = "data:image/png;base64," + enc.encode(IOUtils.toByteArray(iconStream));
+	                workItemTemplate.setAttribute("nodeicon", iconEncoded);
+	                
+	                createAndWriteToFile(fileToWrite, workItemTemplate.toString());
+            	}
             }
         } catch (Exception e) {
             _logger.error("Failed to setup workitem svg images : " + e.getMessage());
