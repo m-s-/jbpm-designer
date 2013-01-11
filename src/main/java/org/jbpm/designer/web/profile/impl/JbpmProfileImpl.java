@@ -57,6 +57,8 @@ public class JbpmProfileImpl implements IDiagramProfile {
     private String _externalLoadSubdomain;
     private String _usr;
     private String _pwd;
+    private boolean _loadStencilsetTemplateOnEveryLoad;
+    private boolean _generateWorkItemSVGsOnEveryLoad;
     
     public JbpmProfileImpl(ServletContext servletContext) {
         this(servletContext, true);
@@ -74,6 +76,14 @@ public class JbpmProfileImpl implements IDiagramProfile {
 
     public String getStencilSet() {
         return _stencilSet;
+    }
+    
+    public boolean loadStencilsetTemplateOnEveryLoad() {
+    	return _loadStencilsetTemplateOnEveryLoad;
+    }
+    
+    public boolean generateWorkItemSVGsOnEveryLoad() {
+    	return _generateWorkItemSVGsOnEveryLoad;
     }
 
     public Collection<String> getStencilSetExtensions() {
@@ -102,6 +112,11 @@ public class JbpmProfileImpl implements IDiagramProfile {
                         for (int i = 0 ; i < reader.getAttributeCount() ; i++) {
                             if ("stencilset".equals(reader.getAttributeLocalName(i))) {
                                 _stencilSet = reader.getAttributeValue(i);
+                            } else if ("processtemplateoneachload".equals(reader.getAttributeLocalName(i))) {
+                            	String processtemplateoneachloadStr = reader.getAttributeValue(i);
+                            	if (processtemplateoneachloadStr != null && processtemplateoneachloadStr.length() > 0) {
+                            		_loadStencilsetTemplateOnEveryLoad = Boolean.parseBoolean(processtemplateoneachloadStr);
+                            	}
                             }
                         }
                     } else if ("plugin".equals(reader.getLocalName())) {
@@ -158,6 +173,15 @@ public class JbpmProfileImpl implements IDiagramProfile {
                                 _pwd = reader.getAttributeValue(i);
                             }
                         }
+                    } else if ("workitemsvgs".equals(reader.getLocalName())) {
+                    	for (int i = 0 ; i < reader.getAttributeCount() ; i++) {
+                            if ("generateoneachload".equals(reader.getAttributeLocalName(i))) {
+                            	String generateWorkItemSVGsOnEveryLoadStr = reader.getAttributeValue(i);
+                            	if (generateWorkItemSVGsOnEveryLoadStr != null && generateWorkItemSVGsOnEveryLoadStr.length() > 0) {
+                            		_generateWorkItemSVGsOnEveryLoad = Boolean.parseBoolean(generateWorkItemSVGsOnEveryLoadStr);
+                            	}
+                            }
+                    	}
                     }
                 }
             }

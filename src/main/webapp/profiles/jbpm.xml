@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 
 <profiles>
-  <profile name="jbpm" stencilset="bpmn2.0jbpm">
+  <profile name="jbpm" stencilset="bpmn2.0jbpm" processtemplateoneachload="false">
   	<plugin name="ORYX.Plugins.SelectStencilSetPerspective"/>
     <plugin name="ORYX.Plugins.Toolbar" />
     <plugin name="ORYX.Plugins.ProcessInfo" />
@@ -44,5 +44,6 @@
     <plugin name="ORYX.Plugins.TaskPropertiesUpdater"/>
     <plugin name="ORYX.Plugins.VoiceCommand"/>
    <externalloadurl protocol="http" host="localhost:8080" subdomain="drools-guvnor/org.drools.guvnor.Guvnor/oryxeditor" usr="admin" pwd="admin"/>
+   <workitemsvgs generateoneachload="false" />
   </profile>
 </profiles>

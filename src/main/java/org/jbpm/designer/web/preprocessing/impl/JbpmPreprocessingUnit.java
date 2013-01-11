@@ -45,6 +45,7 @@ import org.drools.process.core.impl.ParameterDefinitionImpl;
 import org.jbpm.designer.web.preprocessing.IDiagramPreprocessingUnit;
 import org.jbpm.designer.web.profile.IDiagramProfile;
 import org.jbpm.designer.web.profile.impl.ExternalInfo;
+import org.jbpm.designer.web.profile.impl.JbpmProfileImpl;
 import org.jbpm.designer.web.server.ServletUtil;
 import org.jbpm.process.workitem.WorkDefinitionImpl;
 import org.json.JSONObject;
@@ -164,17 +165,23 @@ public class JbpmPreprocessingUnit implements IDiagramPreprocessingUnit {
         		outData += definition.getValue().getName() + ",";
         	}
         	
-        	//load the stencil if needed
-        	if (origStencilContent == null) {
+        	//this may use some jbpm profile specific config entries
+        	JbpmProfileImpl jbpmProfile = null;
+        	if (profile instanceof JbpmProfileImpl) {
+        		jbpmProfile = (JbpmProfileImpl)profile;
+        	}
+        	
+        	//load and parse the stencilset template if needed or if configured to always do so
+        	if (origStencilContent == null || (jbpmProfile != null && jbpmProfile.loadStencilsetTemplateOnEveryLoad())) {
         		origStencilContent = readFile(origStencilFilePath);
         		origStencilST = new StringTemplate(origStencilContent);
+        	} else {
+        		_logger.debug("Skipped reload of the stencilset template by configuration");
         	}
         	// parse the profile json to include config data
         	// parse the orig stencil data with workitem definitions
-        	
-        	
         	StringTemplate workItemTemplate =origStencilST;
-        	workItemTemplate.reset();
+        	workItemTemplate.reset(); //reset on each cycle, we may have not reloaded the template
         	
         	workItemTemplate.setAttribute("workitemDefs", workDefinitions);
         	if(workitemConfigInfo != null && workitemConfigInfo.keySet() != null && workitemConfigInfo.keySet().size() > 0) {
@@ -208,19 +215,36 @@ public class JbpmPreprocessingUnit implements IDiagramPreprocessingUnit {
     
     @SuppressWarnings("unchecked")
     private void createAndParseViewSVG(Map<String, WorkDefinitionImpl> workDefinitions, IDiagramProfile profile) {
+    	//this may use some jbpm profile specific config entries
+    	JbpmProfileImpl jbpmProfile = null;
+    	if (profile instanceof JbpmProfileImpl) {
+    		jbpmProfile = (JbpmProfileImpl)profile;
+    	}
     	//list everything
         File f = new File(workitemSVGFilePath);
         List<String> workitemsvgs = Arrays.asList(f.list(new FilenameFilter() {
             public boolean accept(File dir, String name) {
                 return name.toLowerCase().endsWith(".svg");
             }}));
+        
+        //if we're generating on each load, then delete the old ones
+        if (jbpmProfile != null && jbpmProfile.generateWorkItemSVGsOnEveryLoad()) {
+	        for(String wisvg : workitemsvgs) {
+	            deletefile(new File(workitemSVGFilePath + wisvg));
+	        }
+        } else {
+        	_logger.debug("Skipped deletion and regeneration of all work item SVGs by configuration.");
+        }
+        
         try {
+        	//read this only once, no need to be in the cycle
         	String origSVGFileContent = readFile(origWorkitemSVGFile);
         	
             for(Map.Entry<String, WorkDefinitionImpl> definition : workDefinitions.entrySet()) {
             	String fileToWrite = workitemSVGFilePath + definition.getValue().getName() + ".svg";
-            	//generate only if not already existing. This is adequate for our scenario.
-            	if (workitemsvgs != null && !workitemsvgs.contains(definition.getValue().getName() + ".svg")) {
+            	//if config allows, generate only if not already existing. This is adequate for our scenario. If not generate always
+            	if ( (jbpmProfile != null && jbpmProfile.generateWorkItemSVGsOnEveryLoad()) || 
+            			(workitemsvgs != null && !workitemsvgs.contains(definition.getValue().getName() + ".svg")) ) {
 	                StringTemplate workItemTemplate = new StringTemplate(origSVGFileContent);
 	                workItemTemplate.setAttribute("workitemDef", definition.getValue());
 	                String widIcon = definition.getValue().getIcon();
